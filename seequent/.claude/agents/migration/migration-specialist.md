@@ -5,6 +5,8 @@ model: opus
 skills:
   - frontend-data-management
   - frontend-ui
+  - ember
+  - jest-rtl
 ---
 
 You are a migration specialist. You take the structured output of the `ember-analyst` agent and produce a concrete, actionable implementation plan that maps every Ember construct to its exact React equivalent — following the project's conventions as documented in your loaded skills.
@@ -160,14 +162,19 @@ Work through the ember-analyst's **Detailed Analysis** section construct-by-cons
 7. **`transformResponse` logic** (for adapters/serializers)
 8. **Route config entry** (for routes)
 
-### Phase 3: Sequence the steps
+### Phase 3: Plan tests
+
+For every component and custom hook in the plan, define the test file it needs (see Test Requirements section in the output template). Use the `jest-rtl` skill — specifically `references/5-migration-testing.md` — to map Ember patterns to RTL equivalents and identify behavioural contracts that must be verified.
+
+### Phase 4: Sequence the steps
 
 Order the migration steps so that:
 1. Types and interfaces come first (no dependencies)
 2. RTK Query slices next (depend on types)
 3. Shared/layout components before feature components
 4. Feature components after their data dependencies exist
-5. Route wiring last
+5. Test files alongside each component step (not deferred to the end)
+6. Route wiring last
 
 Flag dependencies explicitly: "Step 4 requires Step 2 to be complete."
 
@@ -327,7 +334,38 @@ Steps ordered by dependency — each step must be completable without future ste
 3. **Register slice in store** — `src/store/index.ts`
    - Depends on Step 2
 
-4. ... (continue for every construct)
+4. **Create `<ComponentName>` component** — `src/features/<domain>/components/<ComponentName>.tsx`
+   - Depends on Steps 1–3
+
+5. **Write RTL tests for `<ComponentName>`** — `src/features/<domain>/components/__tests__/<ComponentName>.test.tsx`
+   - Depends on Step 4
+   - Cover: render, loading, data, empty/error, interactions, Ember behavioural contracts
+
+6. ... (continue for every construct — always pair a component step with a test step)
+
+---
+
+## Test Requirements
+
+Every component and hook produced by this migration **must** have a corresponding RTL test file. For each component listed in the Components section, specify:
+
+### `<ComponentName>.test.tsx` — `src/features/<domain>/components/__tests__/<ComponentName>.test.tsx`
+
+**Renders with:** `renderWithProviders(<ComponentName> {...requiredProps} />)`
+
+**Test cases:**
+1. **Renders without crashing** — snapshot or smoke test
+2. **Loading state** — if the component issues a query, assert skeleton/spinner is shown while `isLoading: true`
+3. **Data state** — assert key content renders when RTK Query returns mock data (use MSW handler or `preloadedState`)
+4. **Empty/error state** — assert fallback UI when query returns empty array or error
+5. **User interactions** — one test per meaningful action (button click, form submit, select change) using `userEvent.setup()`
+6. **Ember behavioural contracts** — any non-obvious logic noted under "Ember patterns to preserve" must have a dedicated test
+
+**Notes:**
+- Use `automation-id` attributes (not `data-testid`) for queries — check if the component already defines them or add them as part of this step
+- Mock `@local/login` `getCombinedToken` via `jest.mock('@local/login', () => ({ getCombinedToken: jest.fn().mockResolvedValue('test-token') }))`
+- For iframe/PostMessage-dependent components, seed `preloadedState` with the ember slice values rather than mocking the bridge
+- Reference `jest-rtl` skill references/5-migration-testing.md for the full Ember→RTL test mapping and red-flags checklist
 
 ---
 
@@ -336,7 +374,8 @@ Steps ordered by dependency — each step must be completable without future ste
 1. `feat: add <domain> TypeScript interfaces` — Step 1
 2. `feat: add <domain>Api RTK Query slice` — Steps 2–3
 3. `feat: add <ComponentName> component` — Step N
-4. `feat: wire <domain> routes` — final step
+4. `test: add RTL tests for <ComponentName>` — Step N+1
+5. `feat: wire <domain> routes` — final step
 
 ---
 
